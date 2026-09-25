@@ -1,0 +1,16 @@
+dimension_types:
+  - pattern: '^габарит_(длина|ширина|высота)$'
+    type: LINEAR
+  - pattern: '^(отверстие_[1-9][0-9]*_глубина|глубина_[1-9][0-9]*)$'
+    type: DEPTH
+  - pattern: '^(отверстие_[1-9][0-9]*_диаметр|диаметр_[1-9][0-9]*)$'
+    type: DIAMETER
+  - pattern: '^фаска_[1-9][0-9]*$'
+    type: CHAMFER
+tolerance_mm: 0.5
+max_text_length: 2000
+max_dimensions: 30
+max_file_size_mb: 10
+timeout_sec: 30
+max_concurrent_requests: 10
+report_max_chars: 4000
