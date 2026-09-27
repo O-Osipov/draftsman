@@ -1,6 +1,7 @@
 """HTTP-клиент бота для локального FastAPI."""
 
 import json
+from pathlib import Path
 
 import httpx
 from pydantic import ValidationError
@@ -21,6 +22,8 @@ def _response_data(response: httpx.Response) -> dict:
         payload = response.json()
     except ValueError as error:
         raise ApiClientError("INTERNAL_ERROR", "API вернул некорректный ответ.") from error
+    if not isinstance(payload, dict):
+        raise ApiClientError("INTERNAL_ERROR", "API вернул некорректный ответ.")
     if response.is_error:
         raise ApiClientError(payload.get("code", "INTERNAL_ERROR"), payload.get("message", "Ошибка API."))
     return payload
@@ -28,11 +31,13 @@ def _response_data(response: httpx.Response) -> dict:
 
 async def parse_dimensions(user_id: int, raw_text: str) -> ParseResponse:
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with httpx.AsyncClient(timeout=2) as client:
             response = await client.post(
                 f"{get_api_url()}/parse-dimensions",
                 json={"user_id": user_id, "raw_text": raw_text},
             )
+    except httpx.TimeoutException as error:
+        raise ApiClientError("TIMEOUT", "Сервис размеров не ответил вовремя.") from error
     except httpx.HTTPError as error:
         raise ApiClientError("INTERNAL_ERROR", "Сервис проверки недоступен. Запусти FastAPI и попробуй снова.") from error
     try:
@@ -41,17 +46,20 @@ async def parse_dimensions(user_id: int, raw_text: str) -> ParseResponse:
         raise ApiClientError("INTERNAL_ERROR", "API вернул ответ неверного формата.") from error
 
 
-async def validate_model(user_id: int, filename: str, content: bytes, dimensions: list[Dimension]) -> AnalyzeResponse:
+async def validate_model(user_id: int, filename: str, path: Path, dimensions: list[Dimension]) -> AnalyzeResponse:
     try:
         async with httpx.AsyncClient(timeout=35) as client:
-            response = await client.post(
-                f"{get_api_url()}/analyze-model",
-                data={
-                    "user_id": str(user_id),
-                    "dimensions": json.dumps([item.model_dump(mode="json") for item in dimensions], ensure_ascii=False),
-                },
-                files={"file": (filename, content, "model/stl")},
-            )
+            with path.open("rb") as content:
+                response = await client.post(
+                    f"{get_api_url()}/analyze-model",
+                    data={
+                        "user_id": str(user_id),
+                        "dimensions": json.dumps([item.model_dump(mode="json") for item in dimensions], ensure_ascii=False),
+                    },
+                    files={"file": (filename, content, "model/stl")},
+                )
+    except httpx.TimeoutException as error:
+        raise ApiClientError("TIMEOUT", "Анализ STL превысил время ожидания.") from error
     except httpx.HTTPError as error:
         raise ApiClientError("INTERNAL_ERROR", "Сервис проверки недоступен. Попробуй позже.") from error
     try:

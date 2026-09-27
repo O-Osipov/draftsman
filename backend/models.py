@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 
 def utc_now() -> datetime:
@@ -48,14 +48,14 @@ class Model(BaseModel):
 
 
 class Match(BaseModel):
-    dimension_name: str
+    dimension_name: str = Field(validation_alias=AliasChoices("name", "dimension_name"), serialization_alias="name")
     expected: float
     actual: float
     delta: float
 
 
 class Mismatch(BaseModel):
-    dimension_name: str
+    dimension_name: str = Field(validation_alias=AliasChoices("name", "dimension_name"), serialization_alias="name")
     expected: float
     actual: float | None
     delta: float | None
@@ -66,6 +66,7 @@ class Report(BaseModel):
     matches: list[Match] = Field(default_factory=list)
     mismatches: list[Mismatch] = Field(default_factory=list)
     summary: str
+    telegram_text: str = ""
     generated_at: datetime = Field(default_factory=utc_now)
 
 
