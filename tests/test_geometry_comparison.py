@@ -6,7 +6,8 @@ import trimesh
 
 from backend.comparison import compare_dimensions
 from backend.geometry import analyze_geometry
-from backend.models import Dimension
+from backend.models import Dimension, Report
+from backend.reporting import format_report
 
 
 class GeometryComparisonTests(unittest.TestCase):
@@ -41,6 +42,11 @@ class GeometryComparisonTests(unittest.TestCase):
         self.assertEqual(len(report.mismatches), 2)
         self.assertIsNone(report.mismatches[0].actual)
         self.assertAlmostEqual(report.mismatches[1].delta, -0.6)
+
+    def test_telegram_report_respects_even_small_configured_limit(self):
+        report = Report(session_id=7, summary="0 из 0 размеров совпали.")
+        self.assertLessEqual(len(format_report(report, 10)), 10)
+        self.assertIn("Отчёт о проверке:", format_report(report, 4000))
 
     def test_two_chamfers_at_opposite_ends_are_distinct(self):
         mesh = trimesh.creation.revolve(

@@ -42,6 +42,8 @@ def format_report(report: Report, limit: int) -> str:
         return text
     # При длинном списке не обрезаем строку посреди размера и сообщаем о пропуске.
     suffix = "\nЧасть строк не показана из-за лимита Telegram. Полный отчёт доступен через API."
+    if len(suffix) > limit:
+        return "Отчёт сокращён."[:limit]
     kept: list[str] = []
     for line in lines:
         candidate = "\n".join(kept + [line]) + suffix
