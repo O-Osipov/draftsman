@@ -1,4 +1,4 @@
-"""Структурная проверка STL без измерения геометрии."""
+"""Загрузка и структурная проверка STL."""
 
 from pathlib import Path
 
@@ -8,7 +8,7 @@ import trimesh
 from backend.errors import ApiError
 
 
-def validate_stl(path: Path) -> None:
+def validate_stl(path: Path) -> trimesh.Trimesh:
     try:
         mesh = trimesh.load_mesh(str(path), file_type="stl")
     except Exception as error:
@@ -22,3 +22,4 @@ def validate_stl(path: Path) -> None:
         or not mesh.is_watertight
     ):
         raise ApiError("INVALID_FILE", "STL должен содержать непустую замкнутую модель.")
+    return mesh

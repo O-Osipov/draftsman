@@ -91,8 +91,15 @@ class ErrorResponse(BaseModel):
     message: str
 
 
+class AxisBounds(BaseModel):
+    x: float = Field(gt=0, allow_inf_nan=False)
+    y: float = Field(gt=0, allow_inf_nan=False)
+    z: float = Field(gt=0, allow_inf_nan=False)
+
+
 class ValidateResponse(BaseModel):
     status: Literal["ok"] = "ok"
     format: Literal["STL"] = "STL"
     size_bytes: int = Field(ge=0)
+    bounds_mm: AxisBounds
     message: str

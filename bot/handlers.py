@@ -47,7 +47,7 @@ async def help_command(message: Message) -> None:
         "отверстие_1_диаметр=10. Можно также указать высоту, "
         "габарит_диаметр, отверстие_1_глубина и фаска_1.\n"
         "После чек-листа загрузи STL до 10 МБ. Бот проверит формат и структуру, "
-        "затем удалит файл. Измерения и отчёт появятся позже."
+        "покажет габариты по осям X/Y/Z и удалит файл. Сравнение и отчёт появятся позже."
     )
 
 
@@ -119,7 +119,14 @@ async def receive_file(message: Message, state: FSMContext) -> None:
             await message.answer("INTERNAL_ERROR: Не удалось проверить STL. Попробуй снова.")
     else:
         if await state.get_state() == Dialog.processing.state:
-            await message.answer(f"{result.message}\nРазмер файла: {result.size_bytes} байт. Временный файл удалён.")
+            bounds = result.bounds_mm
+            await message.answer(
+                f"{result.message}\n"
+                f"Габариты по осям модели: X = {bounds.x:g} мм, "
+                f"Y = {bounds.y:g} мм, Z = {bounds.z:g} мм.\n"
+                "STL не хранит единицы измерения; координаты считаются миллиметрами.\n"
+                f"Размер файла: {result.size_bytes} байт. Временный файл удалён."
+            )
     finally:
         if await state.get_state() == Dialog.processing.state:
             session.state = SessionState.AWAITING_FILE

@@ -1,4 +1,4 @@
-"""FastAPI: размеры и промежуточная проверка загруженного STL."""
+"""FastAPI: размеры, проверка STL и извлечение осевых габаритов."""
 
 import asyncio
 import json
@@ -8,9 +8,10 @@ import tempfile
 from fastapi import FastAPI, File, Form, UploadFile
 from pydantic import ValidationError
 
+from backend.bounds import measure_bounds
 from backend.config import ROOT, get_settings
 from backend.errors import ApiError, install_error_handlers
-from backend.models import Dimension, ParseRequest, ParseResponse, ValidateResponse
+from backend.models import AxisBounds, Dimension, ParseRequest, ParseResponse, ValidateResponse
 from backend.parsing import make_checklist, parse_dimensions
 from backend.stl_validation import validate_stl
 
@@ -36,7 +37,7 @@ async def analyze_model_endpoint(
     file: UploadFile = File(...),
     dimensions: str = Form(...),
 ) -> ValidateResponse:
-    """Пока проверяет файл; измерения и отчёт появятся на следующих этапах."""
+    """Возвращает габариты по осям X/Y/Z; сравнение будет добавлено позже."""
     path: Path | None = None
     try:
         if not file.filename or not file.filename.lower().endswith(".stl"):
@@ -62,12 +63,18 @@ async def analyze_model_endpoint(
         if size_bytes == 0:
             raise ApiError("INVALID_FILE", "Файл пуст.")
         async with validation_slots:
-            await asyncio.to_thread(validate_stl, path)
+            bounds = await asyncio.to_thread(_inspect_bounds, path)
         return ValidateResponse(
             size_bytes=size_bytes,
-            message="STL прошёл проверку формата и структуры. Анализ размеров появится на следующем этапе.",
+            bounds_mm=bounds,
+            message="STL прошёл проверку. Габариты определены; сравнение с чертежом появится на следующем этапе.",
         )
     finally:
         if path is not None:
             path.unlink(missing_ok=True)
         await file.close()
+
+
+def _inspect_bounds(path: Path) -> AxisBounds:
+    mesh = validate_stl(path)
+    return measure_bounds(mesh)
