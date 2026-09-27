@@ -1,10 +1,12 @@
-"""HTTP-клиент бота для POST /parse-dimensions."""
+"""HTTP-клиент бота для локального FastAPI."""
+
+import json
 
 import httpx
 from pydantic import ValidationError
 
 from bot.config import get_api_url
-from backend.models import ParseResponse
+from backend.models import Dimension, ParseResponse, ValidateResponse
 
 
 class ApiClientError(Exception):
@@ -12,6 +14,16 @@ class ApiClientError(Exception):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+def _response_data(response: httpx.Response) -> dict:
+    try:
+        payload = response.json()
+    except ValueError as error:
+        raise ApiClientError("INTERNAL_ERROR", "API вернул некорректный ответ.") from error
+    if response.is_error:
+        raise ApiClientError(payload.get("code", "INTERNAL_ERROR"), payload.get("message", "Ошибка API."))
+    return payload
 
 
 async def parse_dimensions(user_id: int, raw_text: str) -> ParseResponse:
@@ -24,12 +36,25 @@ async def parse_dimensions(user_id: int, raw_text: str) -> ParseResponse:
     except httpx.HTTPError as error:
         raise ApiClientError("INTERNAL_ERROR", "Сервис проверки недоступен. Запусти FastAPI и попробуй снова.") from error
     try:
-        payload = response.json()
-    except ValueError as error:
-        raise ApiClientError("INTERNAL_ERROR", "API вернул некорректный ответ.") from error
-    if response.is_error:
-        raise ApiClientError(payload.get("code", "INTERNAL_ERROR"), payload.get("message", "Ошибка API."))
+        return ParseResponse.model_validate(_response_data(response))
+    except ValidationError as error:
+        raise ApiClientError("INTERNAL_ERROR", "API вернул ответ неверного формата.") from error
+
+
+async def validate_model(user_id: int, filename: str, content: bytes, dimensions: list[Dimension]) -> ValidateResponse:
     try:
-        return ParseResponse.model_validate(payload)
+        async with httpx.AsyncClient(timeout=35) as client:
+            response = await client.post(
+                f"{get_api_url()}/analyze-model",
+                data={
+                    "user_id": str(user_id),
+                    "dimensions": json.dumps([item.model_dump(mode="json") for item in dimensions], ensure_ascii=False),
+                },
+                files={"file": (filename, content, "model/stl")},
+            )
+    except httpx.HTTPError as error:
+        raise ApiClientError("INTERNAL_ERROR", "Сервис проверки недоступен. Попробуй позже.") from error
+    try:
+        return ValidateResponse.model_validate(_response_data(response))
     except ValidationError as error:
         raise ApiClientError("INTERNAL_ERROR", "API вернул ответ неверного формата.") from error

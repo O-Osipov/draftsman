@@ -89,3 +89,10 @@ class ErrorResponse(BaseModel):
     status: Literal["error"] = "error"
     code: str
     message: str
+
+
+class ValidateResponse(BaseModel):
+    status: Literal["ok"] = "ok"
+    format: Literal["STL"] = "STL"
+    size_bytes: int = Field(ge=0)
+    message: str

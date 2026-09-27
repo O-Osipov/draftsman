@@ -36,7 +36,8 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, error: RequestValidationError) -> JSONResponse:
-        code = "INVALID_FILE" if request.url.path == "/analyze-model" else "INVALID_FORMAT"
+        has_file_error = any(item["loc"][-1] == "file" for item in error.errors())
+        code = "INVALID_FILE" if request.url.path == "/analyze-model" and has_file_error else "INVALID_FORMAT"
         return JSONResponse(
             status_code=ERROR_STATUSES[code],
             content={"status": "error", "code": code, "message": "Проверь обязательные поля запроса и их формат."},
