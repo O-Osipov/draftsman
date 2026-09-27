@@ -97,9 +97,14 @@ class AxisBounds(BaseModel):
     z: float = Field(gt=0, allow_inf_nan=False)
 
 
-class ValidateResponse(BaseModel):
-    status: Literal["ok"] = "ok"
-    format: Literal["STL"] = "STL"
-    size_bytes: int = Field(ge=0)
-    bounds_mm: AxisBounds
-    message: str
+class Hole(BaseModel):
+    axis: Literal["x", "y", "z"]
+    center: tuple[float, float]
+    diameter: float = Field(gt=0, allow_inf_nan=False)
+    depth: float = Field(gt=0, allow_inf_nan=False)
+
+
+class Chamfer(BaseModel):
+    axis: Literal["x", "y", "z"]
+    position: float = Field(allow_inf_nan=False)
+    size: float = Field(gt=0, allow_inf_nan=False)

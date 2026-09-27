@@ -1,4 +1,4 @@
-"""Проверки загрузки STL без геометрического сравнения."""
+"""Проверки загрузки и отчёта по пользовательским STL."""
 
 import io
 import json
@@ -11,7 +11,7 @@ import httpx
 import trimesh
 
 from backend.main import TEMP_DIR, app
-from backend.models import Dimension, Session, SessionState, ValidateResponse
+from backend.models import AnalyzeResponse, Dimension, Report, Session, SessionState
 from bot.api_client import ApiClientError
 from bot.handlers import Dialog, receive_file
 
@@ -49,14 +49,14 @@ class StlApiTests(unittest.IsolatedAsyncioTestCase):
         if not ARCHIVE.exists():
             self.skipTest("Локальный архив data/tests.tar.gz не предоставлен")
         fixtures = [
-            (1, "model1_plate_1hole.stl", 202, (100, 50, 10)),
-            (2, "model2_plate_2holes.stl", 202, (80, 60, 8)),
-            (3, "model3_shaft.stl", 202, (20, 20, 80)),
-            (4, "model4_plate_wrong_hole.stl", 202, (100, 50, 10)),
-            (5, "model5_broken.stl", 422, None),
+            (1, "model1_plate_1hole.stl", 200, 4, 0),
+            (2, "model2_plate_2holes.stl", 200, 5, 0),
+            (3, "model3_shaft.stl", 200, 2, 0),
+            (4, "model4_plate_wrong_hole.stl", 200, 3, 1),
+            (5, "model5_broken.stl", 422, None, None),
         ]
         with tarfile.open(ARCHIVE, "r:gz") as archive:
-            for number, filename, expected_status, expected_bounds in fixtures:
+            for number, filename, expected_status, expected_matches, expected_mismatches in fixtures:
                 with self.subTest(filename=filename):
                     text = archive.extractfile(f"tests/dimensions/model{number}.txt").read().decode("utf-8-sig")
                     parsed = await self.client.post(
@@ -66,11 +66,15 @@ class StlApiTests(unittest.IsolatedAsyncioTestCase):
                     content = archive.extractfile(f"tests/fixtures/{filename}").read()
                     response = await self.upload(filename, content, parsed.json()["dimensions"])
                     self.assertEqual(response.status_code, expected_status, response.text)
-                    if expected_status == 202:
-                        self.assertEqual(response.json()["size_bytes"], len(content))
-                        actual = response.json()["bounds_mm"]
-                        for axis, expected in zip(("x", "y", "z"), expected_bounds):
-                            self.assertAlmostEqual(actual[axis], expected, places=3)
+                    if expected_status == 200:
+                        report = response.json()["report"]
+                        self.assertEqual(report["session_id"], 42)
+                        self.assertEqual(len(report["matches"]), expected_matches)
+                        self.assertEqual(len(report["mismatches"]), expected_mismatches)
+                        if number == 4:
+                            mismatch = report["mismatches"][0]
+                            self.assertEqual(mismatch["dimension_name"], "отверстие_1_диаметр")
+                            self.assertAlmostEqual(mismatch["actual"], 8, places=3)
                     else:
                         self.assertEqual(response.json()["code"], "INVALID_FILE")
                     self.assertEqual(list(TEMP_DIR.glob("*.stl")), [])
@@ -83,8 +87,8 @@ class StlApiTests(unittest.IsolatedAsyncioTestCase):
                 if isinstance(content, str):
                     content = content.encode("ascii")
                 response = await self.upload("box.stl", content)
-                self.assertEqual(response.status_code, 202, response.text)
-                self.assertEqual(response.json()["bounds_mm"], {"x": 100.0, "y": 50.0, "z": 10.0})
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(len(response.json()["report"]["matches"]), 1)
 
     async def test_file_errors_and_temporary_cleanup(self):
         cases = [
@@ -136,7 +140,7 @@ class BotUploadTests(unittest.IsolatedAsyncioTestCase):
         state.get_state = AsyncMock(return_value=Dialog.processing.state)
         state.update_data = AsyncMock()
         state.set_state = AsyncMock()
-        response = ValidateResponse(size_bytes=7, bounds_mm={"x": 100, "y": 50, "z": 10}, message="STL проверен.")
+        response = AnalyzeResponse(report=Report(session_id=42, summary="Совпало 1 из 1 размеров."))
         with patch("bot.handlers.api_client.validate_model", new=AsyncMock(return_value=response)) as validate:
             await receive_file(message, state)
         validate.assert_awaited_once()
@@ -146,9 +150,7 @@ class BotUploadTests(unittest.IsolatedAsyncioTestCase):
         saved = Session.model_validate(state.update_data.await_args.kwargs["session"])
         self.assertEqual(saved.state, SessionState.AWAITING_FILE)
         self.assertEqual(saved.dimensions[0].value, 100)
-        self.assertIn("X = 100 мм", message.answer.await_args.args[0])
-        self.assertIn("Z = 10 мм", message.answer.await_args.args[0])
-        self.assertIn("Временный файл удалён", message.answer.await_args.args[0])
+        self.assertIn("Совпало 1 из 1 размеров", message.answer.await_args.args[0])
 
     async def test_invalid_stl_can_be_retried_with_saved_dimensions(self):
         message = Mock()

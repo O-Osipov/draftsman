@@ -1,4 +1,4 @@
-"""FastAPI: размеры, проверка STL и извлечение осевых габаритов."""
+"""FastAPI: разбор размеров и сравнение STL с чертежом."""
 
 import asyncio
 import json
@@ -8,10 +8,11 @@ import tempfile
 from fastapi import FastAPI, File, Form, UploadFile
 from pydantic import ValidationError
 
-from backend.bounds import measure_bounds
+from backend.comparison import compare_dimensions
+from backend.geometry import analyze_geometry
 from backend.config import ROOT, get_settings
 from backend.errors import ApiError, install_error_handlers
-from backend.models import AxisBounds, Dimension, ParseRequest, ParseResponse, ValidateResponse
+from backend.models import AnalyzeResponse, Dimension, ParseRequest, ParseResponse, Report
 from backend.parsing import make_checklist, parse_dimensions
 from backend.stl_validation import validate_stl
 
@@ -31,13 +32,13 @@ async def parse_dimensions_endpoint(request: ParseRequest) -> ParseResponse:
     return ParseResponse(dimensions=dimensions, checklist=make_checklist(dimensions))
 
 
-@app.post("/analyze-model", status_code=202, response_model=ValidateResponse)
+@app.post("/analyze-model", response_model=AnalyzeResponse)
 async def analyze_model_endpoint(
     user_id: int = Form(...),
     file: UploadFile = File(...),
     dimensions: str = Form(...),
-) -> ValidateResponse:
-    """Возвращает габариты по осям X/Y/Z; сравнение будет добавлено позже."""
+) -> AnalyzeResponse:
+    """Возвращает отчёт о сравнении контрольных размеров и STL."""
     path: Path | None = None
     try:
         if not file.filename or not file.filename.lower().endswith(".stl"):
@@ -63,18 +64,15 @@ async def analyze_model_endpoint(
         if size_bytes == 0:
             raise ApiError("INVALID_FILE", "Файл пуст.")
         async with validation_slots:
-            bounds = await asyncio.to_thread(_inspect_bounds, path)
-        return ValidateResponse(
-            size_bytes=size_bytes,
-            bounds_mm=bounds,
-            message="STL прошёл проверку. Габариты определены; сравнение с чертежом появится на следующем этапе.",
-        )
+            report = await asyncio.to_thread(_analyze, path, user_id, expected)
+        return AnalyzeResponse(report=report)
     finally:
         if path is not None:
             path.unlink(missing_ok=True)
         await file.close()
 
 
-def _inspect_bounds(path: Path) -> AxisBounds:
+def _analyze(path: Path, user_id: int, dimensions: list[Dimension]) -> Report:
     mesh = validate_stl(path)
-    return measure_bounds(mesh)
+    geometry = analyze_geometry(mesh)
+    return compare_dimensions(user_id, dimensions, geometry)

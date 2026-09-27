@@ -6,7 +6,7 @@ import httpx
 from pydantic import ValidationError
 
 from bot.config import get_api_url
-from backend.models import Dimension, ParseResponse, ValidateResponse
+from backend.models import AnalyzeResponse, Dimension, ParseResponse
 
 
 class ApiClientError(Exception):
@@ -41,7 +41,7 @@ async def parse_dimensions(user_id: int, raw_text: str) -> ParseResponse:
         raise ApiClientError("INTERNAL_ERROR", "API вернул ответ неверного формата.") from error
 
 
-async def validate_model(user_id: int, filename: str, content: bytes, dimensions: list[Dimension]) -> ValidateResponse:
+async def validate_model(user_id: int, filename: str, content: bytes, dimensions: list[Dimension]) -> AnalyzeResponse:
     try:
         async with httpx.AsyncClient(timeout=35) as client:
             response = await client.post(
@@ -55,6 +55,6 @@ async def validate_model(user_id: int, filename: str, content: bytes, dimensions
     except httpx.HTTPError as error:
         raise ApiClientError("INTERNAL_ERROR", "Сервис проверки недоступен. Попробуй позже.") from error
     try:
-        return ValidateResponse.model_validate(_response_data(response))
+        return AnalyzeResponse.model_validate(_response_data(response))
     except ValidationError as error:
         raise ApiClientError("INTERNAL_ERROR", "API вернул ответ неверного формата.") from error
